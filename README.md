@@ -1,2 +1,2 @@
-# impulse_classifier
-ImBalanced Positive-Unlabelled Learning with Self-Enrichment
+# self_training_pu
+![](demo_plot.png)
