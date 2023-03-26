@@ -72,8 +72,6 @@ class ImPULSEClassifier(ParallelMixin):
 
         return model
 
-    # X_train, y_train = X_train, y_train_pu,
-
     def fit(self, X: np.array, y: np.array) -> None:
 
         X_train, X_eval, y_train, y_eval = train_test_split(
