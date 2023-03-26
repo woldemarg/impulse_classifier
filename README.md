@@ -1,2 +1,2 @@
-# self_training_pu
+# Imbalanced Positive-Unlabelled Learning with Self-Enrichment
 ![](demo_plot.png)
