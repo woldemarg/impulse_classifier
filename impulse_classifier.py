@@ -24,8 +24,9 @@ class ImPULSEClassifier(ParallelMixin):
         self.hold_out_ratio = hold_out_ratio
         self.upd_estimator = self._update_estimator(estimator)
         self.random_state = random_state
-        self.model = None
         self.n_jobs = n_jobs if n_jobs else effective_n_jobs()
+        self.model = None
+        self.prior = None
 
     @staticmethod
     def _update_estimator(estm: object) -> Callable:
@@ -145,7 +146,16 @@ class ImPULSEClassifier(ParallelMixin):
                     sample_weights=sample_weights,
                     learning_rate=learning_rate)
 
+                prior = np.average(
+                    a=np.ma.masked_array(
+                        y_train_copy,
+                        mask=y_train),
+                    weights=np.ma.masked_array(
+                        sample_weights,
+                        mask=y_train))
+
                 self.model = model
+                self.prior = prior
 
     def predict(self, X) -> np.array:
         if self.model is None:
