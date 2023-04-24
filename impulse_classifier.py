@@ -157,12 +157,21 @@ class ImPULSEClassifier(ParallelMixin):
                 self.model = model
                 self.prior = prior
 
-    def predict(self, X) -> np.array:
-        if self.model is None:
-            raise ValueError("Model has not been trained yet.")
-        return self.model.predict(X)
+    # def predict(self, X) -> np.array:
+    #    if self.model is None:
+    #        raise ValueError("Model has not been trained yet.")
+    #    return self.model.predict(X)
 
-    def predict_proba(self, X) -> np.array:
-        if self.model is None:
-            raise ValueError("Model has not been trained yet.")
-        return self.model.predict_proba(X)
+    # def predict_proba(self, X) -> np.array:
+    #    if self.model is None:
+    #        raise ValueError("Model has not been trained yet.")
+    #    return self.model.predict_proba(X)
+        
+    def __getattr__(self, attrname):
+        if hasattr(self.model, attrname):
+            # If the attribute exists in the base estimator, return it.
+            return getattr(self.model, attrname)
+        else:
+            raise AttributeError(
+                f"{self.__class__.__name__} object has no attribute '{attrname}'")
+    
