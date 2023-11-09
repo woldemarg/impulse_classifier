@@ -78,7 +78,8 @@ class ImPULSEClassifier(ParallelMixin):
         X_train, X_eval, y_train, y_eval = train_test_split(
             X, y,
             test_size=self.hold_out_ratio,
-            random_state=self.random_state)
+            random_state=self.random_state,
+            stratify=y)
 
         y_train_copy = y_train.copy()
 
