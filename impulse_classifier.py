@@ -3,11 +3,12 @@ from sklearn.metrics import average_precision_score
 from lightgbm import early_stopping
 import numpy as np
 from joblib import effective_n_jobs
-from typing import Tuple, Callable, Optional
+from typing import Tuple, Callable, Optional, Iterable
+from tqdm import tqdm
 from automl_mixins import ParallelMixin
 
-# %%
 
+# %%
 
 class ImPULSEClassifier(ParallelMixin):
     def __init__(self,
@@ -50,7 +51,8 @@ class ImPULSEClassifier(ParallelMixin):
                      y_eval: np.ndarray,
                      updater: Callable,
                      sample_weights: np.ndarray,
-                     learning_rate: float) -> object:
+                     learning_rate: float,
+                     **kwargs) -> object:
 
         class_counts = np.bincount(y_train)
 
@@ -61,7 +63,8 @@ class ImPULSEClassifier(ParallelMixin):
         model = updater(
             **dict(
                 learning_rate=learning_rate,
-                class_weight=class_weights))
+                class_weight=class_weights),
+            **kwargs)
 
         model.fit(
             X_train,
@@ -73,23 +76,23 @@ class ImPULSEClassifier(ParallelMixin):
 
         return model
 
-    def fit(self, X: np.array, y: np.array) -> None:
-
-        X_train, X_eval, y_train, y_eval = train_test_split(
-            X, y,
-            test_size=self.hold_out_ratio,
-            random_state=self.random_state,
-            stratify=y)
-
-        y_train_copy = y_train.copy()
-
-        learning_rates = np.geomspace(self.max_lr, self.min_lr, self.num_iters)
-
-        delta_positives, delta_confidence = (1, 1)
+    def _iterate(self,
+                 learning_rates: Iterable,
+                 X_train: np.ndarray,
+                 X_eval: np.ndarray,
+                 y_train: np.ndarray,
+                 y_eval: np.ndarray,
+                 **kwargs):
 
         sample_weights = np.full(len(y_train), 1)
 
-        for learning_rate in learning_rates:
+        y_train_copy = y_train.copy()
+
+        delta_positives, delta_confidence = (1, 1)
+
+        for learning_rate in tqdm(learning_rates):
+
+            # print(learning_rate)
 
             delta_positives, delta_confidence = (1, 1) if not self.model else (
                 delta_positives, delta_confidence)
@@ -136,16 +139,26 @@ class ImPULSEClassifier(ParallelMixin):
 
             if delta_positives > 0 or delta_confidence > 0:
 
-                # print(np.sum(y_train_copy), np.sum(sample_weights))
+                # print(y_train_copy.sum(), sample_weights.sum())
 
-                model = self._train_model(
-                    X_train,
-                    X_eval,
-                    y_train_copy,
-                    y_eval,
-                    updater=self.upd_estimator,
-                    sample_weights=sample_weights,
-                    learning_rate=learning_rate)
+                try:
+
+                    model = self._train_model(
+                        X_train,
+                        X_eval,
+                        y_train_copy,
+                        y_eval,
+                        updater=self.upd_estimator,
+                        sample_weights=sample_weights,
+                        learning_rate=learning_rate,
+                        **kwargs)
+
+                except ValueError:
+
+                    self.model = None
+                    self.prior = None
+
+                    return False
 
                 prior = np.average(
                     a=np.ma.masked_array(
@@ -158,6 +171,63 @@ class ImPULSEClassifier(ParallelMixin):
                 self.model = model
                 self.prior = prior
 
+        print(f'Added {y_train_copy.sum() - y_train.sum()} new labels.')
+
+        return True
+
+    def fit(self, X: np.array, y: np.array) -> None:
+
+        X_train, X_eval, y_train, y_eval = train_test_split(
+            X, y,
+            test_size=self.hold_out_ratio,
+            random_state=self.random_state,
+            stratify=y)
+
+        learning_rates = np.geomspace(
+            self.max_lr,
+            self.min_lr,
+            self.num_iters)
+
+        fitted = self._iterate(
+            learning_rates,
+            X_train,
+            X_eval,
+            y_train,
+            y_eval)
+
+        n = 1
+
+        while not fitted:
+
+            if n >= 10:
+                raise ValueError(
+                    'The model training process failed to converge.')
+
+            print('Adjusting parameters for another attempt.')
+
+            self.max_lr *= np.exp(-0.1)
+            self.min_lr *= np.exp(-0.1)
+
+            learning_rates = np.geomspace(
+                self.max_lr,
+                self.min_lr,
+                self.num_iters)
+
+            X_train, X_eval, y_train, y_eval = train_test_split(
+                X, y,
+                test_size=self.hold_out_ratio,
+                random_state=n,
+                stratify=y)
+
+            fitted = self._iterate(
+                learning_rates,
+                X_train,
+                X_eval,
+                y_train,
+                y_eval)
+
+            n += 1
+
     # def predict(self, X) -> np.array:
     #    if self.model is None:
     #        raise ValueError("Model has not been trained yet.")
@@ -167,12 +237,10 @@ class ImPULSEClassifier(ParallelMixin):
     #    if self.model is None:
     #        raise ValueError("Model has not been trained yet.")
     #    return self.model.predict_proba(X)
-        
+
     def __getattr__(self, attrname):
         if hasattr(self.model, attrname):
             # If the attribute exists in the base estimator, return it.
             return getattr(self.model, attrname)
-        else:
-            raise AttributeError(
-                f"{self.__class__.__name__} object has no attribute '{attrname}'")
-    
+        raise AttributeError(
+            f"{self.__class__.__name__} object has no attribute '{attrname}'")
