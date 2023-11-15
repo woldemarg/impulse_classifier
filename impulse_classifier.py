@@ -1,9 +1,10 @@
+from typing import Tuple, Callable, Optional, Iterable
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import average_precision_score
+# from sklearn.utils.class_weight import compute_class_weight
 from lightgbm import early_stopping
-import numpy as np
 from joblib import effective_n_jobs
-from typing import Tuple, Callable, Optional, Iterable
+import numpy as np
 from tqdm import tqdm
 from automl_mixins import ParallelMixin
 
@@ -45,12 +46,12 @@ class ImPULSEClassifier(ParallelMixin):
         return ('custom_score', score, True)
 
     def _train_model(self,
-                     X_train: np.ndarray,
-                     X_eval: np.ndarray,
-                     y_train: np.ndarray,
-                     y_eval: np.ndarray,
+                     X_train: np.array,
+                     X_eval: np.array,
+                     y_train: np.array,
+                     y_eval: np.array,
                      updater: Callable,
-                     sample_weights: np.ndarray,
+                     sample_weights: np.array,
                      learning_rate: float,
                      **kwargs) -> object:
 
@@ -61,9 +62,8 @@ class ImPULSEClassifier(ParallelMixin):
             for c in set(y_train)}
 
         model = updater(
-            **dict(
-                learning_rate=learning_rate,
-                class_weight=class_weights),
+            **{'learning_rate': learning_rate,
+                'class_weight': class_weights},
             **kwargs)
 
         model.fit(
@@ -78,11 +78,11 @@ class ImPULSEClassifier(ParallelMixin):
 
     def _iterate(self,
                  learning_rates: Iterable,
-                 X_train: np.ndarray,
-                 X_eval: np.ndarray,
-                 y_train: np.ndarray,
-                 y_eval: np.ndarray,
-                 **kwargs):
+                 X_train: np.array,
+                 X_eval: np.array,
+                 y_train: np.array,
+                 y_eval: np.array,
+                 **kwargs) -> bool:
 
         sample_weights = np.full(len(y_train), 1)
 
@@ -91,8 +91,6 @@ class ImPULSEClassifier(ParallelMixin):
         delta_positives, delta_confidence = (1, 1)
 
         for learning_rate in tqdm(learning_rates):
-
-            # print(learning_rate)
 
             delta_positives, delta_confidence = (1, 1) if not self.model else (
                 delta_positives, delta_confidence)
@@ -112,7 +110,7 @@ class ImPULSEClassifier(ParallelMixin):
 
                 bins = np.percentile(preds, q=np.linspace(0, 100, 11))
 
-                # to include the rightmost value
+                # will include the rightmost value
                 bins[-1] += np.finfo(float).eps
 
                 bin_indices = np.digitize(preds, bins)
